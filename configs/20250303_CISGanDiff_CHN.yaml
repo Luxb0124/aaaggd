@@ -1,0 +1,203 @@
+model:
+  target: dgldm.gandiff.GANDiff
+  params:
+    input_std_src_img: 'std_src_img'
+    input_std_ref_img: 'std_ref_img'
+    input_sty_src_img: 'sty_src_img'
+    input_sty_ref_img: 'sty_ref_img'
+    input_src_char: 'src_char'
+    input_ref_char: 'ref_char'
+    input_src_char_id: 'src_char_id'
+    input_ref_char_id: 'ref_char_id'
+    input_src_char_len: 'src_char_len'
+    input_ref_char_len: 'ref_char_len'
+    # new added 20250227, begin
+    is_fixed_aux: False
+    input_sty_class_id: 'sty_class_id'
+    w_aux_gp: 10.0
+    w_aux_adv: 1.0
+    w_aux_rec: 0.1
+    w_aux_vec: 0.01
+    w_aux_off: 0.5
+    # new added 20250227, end
+    drop_prob: 0.1
+    perceptual_coefficient: 0.01
+    offset_coefficient: 0.5
+    diffuser_coefficient: 1.0
+    aux_coefficient: 1.0
+    prob_self_supervised: 0.1
+    # no use instead by w_aux_off
+    aux_offset_coefficient: 0.5
+    aux_ctc_neck_coefficient: 0.01
+    aux_ctc_coefficient: 0.001
+    char_weight: 1.0
+    show_debug: False
+    eps: 1e-6
+
+    # auxiliary items
+    aux_C_config:
+      target: dgldm.auxiliary.aux_models.guidingNet.GuidingNet
+      params:
+        sty_dim: 128
+        output_k: 6900  # 1000  # 400
+
+    aux_G_config:
+      target: dgldm.auxiliary.aux_models.generators.CISGenerator
+      params:
+        nf_enc: 64
+        n_downs: 2
+        n_res: 2
+        enc_norm: 'in'
+        act: 'relu'
+        pad: 'reflect'
+        nf_dec: 256
+        sty_norm: 'adain'
+        dec_norm: 'adain'
+        use_sn: False
+        sty_dim: 128
+        load_path: null
+        load_key: 'G_EMA_state_dict'
+
+    # new added 20250227, begin
+    aux_D_config:
+      target: dgldm.auxiliary.aux_models.discriminators.BaseDiscriminator
+      params:
+        image_size: 64
+        num_domains: 6900  # 1000 # 400
+        max_conv_dim: 1024
+    # new added 20250227, end
+
+    unet_config:
+      target: dgldm.df.df_models.unet.UNet
+      params:
+        sample_size: 64
+        in_channels: 3
+        out_channels: 3
+        flip_sin_to_cos: True
+        freq_shift: 0
+        down_block_types: [ 'DownBlock2D', 'MCADownBlock2D', 'MCADownBlock2D', 'DownBlock2D' ]
+        up_block_types: [ 'UpBlock2D', 'StyleRSIUpBlock2D', 'StyleRSIUpBlock2D', 'UpBlock2D' ]
+        block_out_channels: [ 64, 128, 256, 512 ]
+        layers_per_block: 2
+        downsample_padding: 1
+        mid_block_scale_factor: 1
+        act_fn: 'silu'
+        norm_num_groups: 32
+        norm_eps: 1e-05
+        cross_attention_dim: 1024
+        attention_head_dim: 1
+        channel_attn: True
+        content_encoder_downsample_size: 3
+        content_start_channel: 64
+        reduction: 32
+
+    style_config:
+      target: dgldm.df.df_models.style_encoder.StyleEncoder
+      params:
+        G_ch: 64
+        resolution: 64
+
+    content_config:
+      target: dgldm.df.df_models.content_encoder.ContentEncoder
+      params:
+        G_ch: 64
+        resolution: 64
+
+    noise_config:
+      target: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+      params:
+        num_train_timesteps: 1000
+        beta_start: 0.0001
+        beta_end: 0.02
+        beta_schedule: 'scaled_linear'
+        trained_betas: null
+        variance_type: "fixed_small"
+        clip_sample: True
+
+    envs_config:
+      gpus: '0,1,2,3,4,5'
+
+    logger_config:
+      base_logger_root: '../../results/banada/'
+      save_ckpt_frequency: 2000
+      image_logger_config:
+        target: dgldm.utils.logger.ImageLogger
+        params:
+          # iteration step...
+          batch_frequency: 200
+          max_images: 4
+          clamp: True
+          increase_log_steps: True
+          rescale: True
+          disabled: False
+          log_on_batch_idx: False
+          log_first_step: False
+          log_images_kwargs: null
+
+    sampler_config:
+      model_type: 'noise'
+      guidance_type: 'classifier-free'
+      algorithm_type: "dpmsolver++"
+      version: 'V3'
+      correcting_x0_fn: null
+      resolution: 64
+      seed: 8888
+      num_inference_steps: 20
+      order: 2
+      skip_type: 'time_uniform'
+      method: 'multistep'
+      guidance_scale: 7.5
+
+    dataset_config:
+      target: datasets.datasets.CustomizedDataset
+      params:
+        data_root: "../datasets/chinese/train"
+        standard_root: "../datasets/chinese/standard"
+        resolution: 64
+        # transforms: null
+        transforms: "default"
+        rec_char_dict_path: null
+
+    dataloader_config:
+      train_batch_size: 5
+      test_batch_size: 26
+
+    optimizer_config:
+      learning_rate: 1e-4
+      adam_beta1: 0.9
+      adam_beta2: 0.999
+      adam_weight_decay: 1e-2
+      adam_epsilon: 1e-08
+      lr_scheduler: 'linear'
+      lr_warmup_steps: 10000
+      gradient_accumulation_steps: 1
+      max_train_steps: 800000
+      # new added 20250227, begin
+      c_lr: 1e-4
+      g_lr: 1e-4
+      d_lr: 1e-4
+      c_w_decay: 0.001
+      g_w_decay: 0.0001
+      d_w_decay: 0.0001
+      # new added 20250227, end
+
+    ocr_config:
+      rec_image_shape: "3, 48, 320"
+      predictor: null
+      # 'ch' or 'en'
+      model_lang: 'ch'
+
+    # test
+    test_dataset_config:
+      target: datasets.datasets.TestDataset
+      params:
+        data_root: "../../datasets/font_datasets/SEPARATE/Capitals_colorGrad64/test"
+        standard_root: "../../datasets/font_datasets/SEPARATE/Capitals_colorGrad64/standard"
+        resolution: 64
+        transforms: "default"
+        config_path: "../FontDiffuser_pl/datasets/english_cycle_pgt.pickle"
+
+    test_config:
+      ckpt_dir: '../../results/banada/cyc_pgt_diff/baseline_cycle_percep_v10/2024-09-25-18-18/ckpts'
+      result_dir: '../../results/banada/cyc_pgt_diff/baseline_cycle_percep_v10/2024-09-25-18-18/tests'
+      style_name_key: 'style_name'
